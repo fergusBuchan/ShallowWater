@@ -1,0 +1,308 @@
+#pragma kernel Pass0
+#pragma kernel Pass1
+#pragma kernel Pass2
+#pragma kernel SplashPass
+
+//struct for particle (yeah it could just be a float3 i know but who are you? My dad? I get to use u,v and h instad of x/y/z so it's kind of useful)
+struct waterParticle {
+    float u;//horizontal veolocity
+    float v;//vertical veolocity
+    float h;//height
+};
+
+// array of particles 
+RWTexture2D<float4>  waterSimParticles_0;
+// this is the texture we for the temp values
+RWTexture2D<float4>  waterSimParticles_1;
+// texture for the force generated through physics objects
+RWTexture2D<float4> splashTexture_0;
+// array we output
+RWTexture2D<float4>  hieghtMap;
+
+// length of the sides of the image
+float dimX;
+float dimY;
+
+// size of the simulation (how much space is between pixels)
+float sizeX;
+float sizeY;
+
+// time since last simulation
+float deltaTime;
+
+//gravity
+const static float g = 9.8;
+
+
+/*
+
+to fit all these equations on screen we need some abbrviated varible names
+this daigram should show how things are orginised:
+
+[  ][v0][  ]
+[h_][p ][h0]
+[  ][v_][  ]
+
+[   ][tv0][   ]
+[th_][tp ][th0]
+[   ][tv_][   ]
+
+-> p is the particle we are solving for
+-> h_,v_,h0,v0 are the particles that are adjacent to p
+-> tp is the temporary values we need to keep between steps
+
+*/
+
+[numthreads(8, 8, 1)]
+void Pass0(uint3 id : SV_DispatchThreadID)
+{
+
+    waterSimParticles_0[int2(id.x, id.y)] = waterSimParticles_0[int2(id.x, id.y)] +  float4(0, 0, 10.0, 0.0);
+
+}
+// this function inits the sim, if the height of the particles is ever negative it breaks the sim, so it's nice to have a buffer
+
+[numthreads(8,8,1)]
+void Pass1(uint3 id : SV_DispatchThreadID)
+//threadNo is the thread we are on, index is the place within the thread
+{
+
+    float dt = deltaTime;
+    float2 dim = float2(100 / dimX, 100 / dimY);
+    // this represents the distance between particles
+
+    uint2 currentCoords = int2(id.x, id.y);
+
+    waterParticle p;
+    p.u = waterSimParticles_0[currentCoords].x;
+    p.v = waterSimParticles_0[currentCoords].y;
+    p.h = waterSimParticles_0[currentCoords].z;
+    
+    waterParticle h0;
+    if (id.x < dimX - 1) {
+
+        h0.u = waterSimParticles_0[currentCoords + int2(1, 0)].x;
+        h0.v = waterSimParticles_0[currentCoords + int2(1, 0)].y;
+        h0.h = waterSimParticles_0[currentCoords + int2(1, 0)].z;
+    }
+    else {
+        h0.u = 0.0; h0.v = 0.0; h0.h = 0.0;
+    }
+
+    waterParticle v0;
+    if (id.y < dimY - 1) {
+        v0.u = waterSimParticles_0[currentCoords + int2(0, 1)].x;
+        v0.v = waterSimParticles_0[currentCoords + int2(0, 1)].y;
+        v0.h = waterSimParticles_0[currentCoords + int2(0, 1)].z;
+    }
+    else {
+        v0.u = 0.0; v0.v = 0.0; v0.h = 0.0;
+    }
+    // just some orginisation stuff, just sampling textures and putting them into structs
+
+
+    float h; //height
+    float uh;//horizontal momentum
+    float vh;//vertical momentum
+
+    h =
+        p.h
+        - (dt / dim.x) * ((h0.u * h0.h) - (p.u * p.h))
+        - (dt / dim.y) * ((v0.v * v0.h) - (p.v * p.h))
+        ;
+
+    if (id.x > 1 && id.x < dimX - 1) {
+        uh =
+            (p.u * p.h)
+            - (dt / dim.x) * (((pow(h0.u, 2) * h0.h) + (0.5 * g * pow(h0.h, 2))) - ((pow(p.u, 2) * p.h) + (0.5 * g * pow(p.h, 2))))
+            - (dt / dim.y) * ((v0.u * v0.v * v0.h) - (p.u * p.v * p.h))
+            ;
+    }
+    else {
+        uh = 0;
+    }
+    if (id.y > 1 && id.y < dimY - 1) {
+        vh =
+            (p.v * p.h)
+            - (dt / dim.x) * ((h0.u * h0.v * h0.h) - (p.u * p.v * p.h))
+            - (dt / dim.y) * (((pow(v0.v, 2) * v0.h) + (0.5 * g * pow(v0.h, 2))) - ((pow(p.v, 2) * p.h) + (0.5 * g * pow(p.h, 2))))
+            ;
+    }
+    else {
+        vh = 0;
+    }
+
+    waterParticle tp;
+
+    tp.u = uh / h;// convert momentum to velocity
+
+    tp.v = vh / h;// ==
+
+    tp.h = h;
+
+    waterSimParticles_1[currentCoords] = float4(tp.u, tp.v, tp.h, 1.0);
+    // updating sim with new itermidate values
+
+    // yeah this physics stuff? I'm just as lost as you are
+}
+
+
+[numthreads(8, 8, 1)]
+void Pass2(uint3 id : SV_DispatchThreadID)
+{
+    
+    float dt = deltaTime;
+    float2 dim = float2(100 / dimX, 100 / dimY);
+    // this represents the distance between particles
+
+    int2 currentCoords = int2(id.x,id.y);
+
+    waterParticle p;
+    p.u = waterSimParticles_0[currentCoords].x;
+    p.v = waterSimParticles_0[currentCoords].y;
+    p.h = waterSimParticles_0[currentCoords].z;
+    
+    waterParticle tp;
+    tp.u = waterSimParticles_1[currentCoords].x;
+    tp.v = waterSimParticles_1[currentCoords].y;
+    tp.h = waterSimParticles_1[currentCoords].z;
+
+    waterParticle th_;
+    if (id.x > 0) {//==
+        th_.u = waterSimParticles_1[currentCoords + int2(-1, 0)].x;
+        th_.v = waterSimParticles_1[currentCoords + int2(-1, 0)].y;
+        th_.h = waterSimParticles_1[currentCoords + int2(-1, 0)].z;
+
+    }
+    else {
+        th_.u = 0.0; th_.v = 0.0; th_.h = 0.0;
+
+    }
+
+    waterParticle tv_;
+    if (id.y > 0) {//==
+        tv_.u = waterSimParticles_1[currentCoords + int2(0, -1)].x;
+        tv_.v = waterSimParticles_1[currentCoords + int2(0, -1)].y;
+        tv_.h = waterSimParticles_1[currentCoords + int2(0, -1)].z;
+    }
+    else {
+        tv_.u = 0.0; tv_.v = 0.0; tv_.h = 0.0;
+    }
+
+
+    float h; //height
+    float uh;//horizontal momentum
+    float vh;//vertical momentum
+
+    // just some orginisation stuff, just sampling textures and putting them into structs
+
+    h = 
+        (0.5) * ((p.h)+(tp.h))
+        - (0.5) * (dt/ dim.x) * ((tp.u * tp.h) - (th_.u * th_.h))
+        - (0.5) * (dt/ dim.y) * ((tp.v * tp.h) - (tv_.v * tv_.h))
+        ;
+
+
+    if (id.x > 1 && id.x < dimX - 1) {
+        uh =
+            (0.5) * ((p.u * p.h) + (tp.u * tp.h))
+            - (0.5) * (dt / dim.x) * ( ( (pow(tp.u, 2) * tp.h) + (0.5 * g * pow(tp.h, 2)) ) - ( (pow(th_.u, 2) * th_.h) + (0.5 * g * pow(th_.h, 2)) ) )
+            - (0.5) * (dt / dim.y) * ( (tp.u * tp.v * tp.h) - (tv_.u * tv_.v * tv_.h) )
+            ;
+    }
+    else {
+       uh = 0.0;
+        //particles on the horizontal sides have u set to zero
+    }
+
+    if (id.y > 1 && id.y < dimY - 1) {
+        vh =
+            (0.5) * ((p.v * p.h) + (tp.v * tp.h))
+            - (0.5) * (dt / dim.x) * ((tp.u * tp.v * tp.h) - (th_.u * th_.v * th_.h))
+            - (0.5) * (dt / dim.y) * (((pow(tp.v, 2) * tp.h) + (0.5 * g * pow(tp.h, 2))) - ((pow(tv_.v, 2) * tv_.h) + (0.5 * g * pow(tv_.h, 2))))
+            ;
+    }
+    else {
+        vh = 0.0;
+        //particles on the vertical sides have v set to zero
+    }
+
+    waterParticle newP;
+
+    newP.u = uh / h;
+    newP.u *= 0.999;//<- this is so waves don't last forever
+
+    newP.v = vh / h;
+    newP.v *= 0.999;
+    
+    newP.h = h;
+
+    waterSimParticles_0[currentCoords] = float4(newP.u, newP.v, newP.h,1.0);
+    // updating the particle texture
+
+    hieghtMap[id.xy] = float4(newP.h - 10.0, newP.h - 10, newP.h - 10.0, 1.0);
+    // converting the data into a height map
+}
+
+[numthreads(8, 8, 1)]
+void SplashPass(uint3 id : SV_DispatchThreadID) {
+
+    float4 currentV =  waterSimParticles_0[int2(id.x, id.y)];
+    float4 splashV =  splashTexture_0[int2(id.x, id.y)];
+
+
+    float2 dir = float2(0.0f,0.0f);
+    if(splashTexture_0[int2(id.x, id.y) + int2(1,0)].y == 0.0f){
+        dir.x += 1.0f;
+    }
+    if(splashTexture_0[int2(id.x, id.y) + int2(-1,0)].y == 0.0f){
+        dir.x += -1.0f;
+    }
+    if(splashTexture_0[int2(id.x, id.y) + int2(0,1)].y == 0.0f){
+        dir.y += 1.0f;
+    }
+    if(splashTexture_0[int2(id.x, id.y) + int2(0,-1)].y == 0.0f){
+        dir.y += -1.0f;
+    }
+
+    if(length(dir) > 0.0){
+        dir = normalize(dir);
+    }
+
+    splashV.x += dir.x * abs(splashV.y);
+    splashV.z += dir.y * abs(splashV.y);
+
+    // here we're calculating a vector for the force in the y direction,
+    // since our sim is 2d we have to to change the 3d veolicty to work in 2d space
+    // basicly we make a vector that pionts away from other pixels with colour
+
+    if(splashV.x > 0){
+        if(splashV.x > currentV.x){
+            currentV.x = splashV.x;
+        }
+    }
+    else if (splashV.x < 0){
+        if(splashV.x < currentV.x){
+            currentV.x = splashV.x;
+        }
+    }
+
+    if(splashV.z > 0){
+        if(splashV.z > currentV.y){
+            currentV.y = splashV.z;
+        }
+    }
+    else if (splashV.z < 0){
+        if(splashV.z < currentV.y){
+            currentV.y = splashV.z;
+        }
+    }
+
+    // if the horizontal/vertical velocity of the object is greater than^ the paritcle's velocity, then we set the particle's velocity to the object's
+    // ^ relative to the direction, if the object velocity is negative it will be less than
+
+    waterSimParticles_0[int2(id.x, id.y)] = currentV;
+
+}
+// I needed a way to add spashes to the sim so when you click it it splashes but I also thought it would be cool if you could 
+// simulate rain on a puddle so it's kind of just a texture merge 

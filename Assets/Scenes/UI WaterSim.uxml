@@ -1,0 +1,8 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement style="height: 1951px; flex-direction: column; justify-content: center; align-items: center;">
+        <ui:Label tabindex="-1" text="-&gt; Use the arrow keys to move between simulations&#10;&#10;-&gt; press R to reset a simualtion&#10;&#10;-&gt; click and drag the sphere to interact with the simulation&#10;&#10;-&gt; the simulation that is currently in use is displayed on the bottom right&#10;" display-tooltip-when-elided="true" name="Instructions" style="-unity-text-align: middle-center; white-space: nowrap; color: rgb(43, 43, 43); width: 1146px; height: 421px; font-size: 32px; display: flex; background-color: rgb(238, 238, 238); justify-content: space-around; flex-grow: 0;" />
+    </ui:VisualElement>
+    <ui:VisualElement name="Container" style="justify-content: flex-end; align-items: auto; height: 817px;">
+        <ui:Label tabindex="-1" text="Label" display-tooltip-when-elided="true" name="SimulationName" style="font-size: 48px; background-color: rgba(255, 255, 255, 0); -unity-background-scale-mode: scale-to-fit; -unity-text-outline-color: rgb(255, 255, 255); -unity-font-style: normal; color: rgb(255, 255, 255); -unity-text-outline-width: 0; -unity-slice-left: 0; -unity-slice-top: 0; -unity-slice-right: 0; -unity-slice-bottom: 0; width: 150px; white-space: normal; -unity-text-align: middle-center; justify-content: space-around;" />
+    </ui:VisualElement>
+</ui:UXML>
